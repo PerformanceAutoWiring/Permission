@@ -113,6 +113,27 @@
   .desc{color:#cfcab9;font-size:14.5px;line-height:1.5}
   .toggles{display:flex;flex-wrap:wrap;gap:8px}
   .formhead{font-family:'Barlow Condensed';font-weight:700;text-transform:uppercase;font-size:23px;letter-spacing:.04em}
+
+  /* requests inbox */
+  .iconbtn{position:relative;background:var(--panel);border:1px solid var(--line);color:var(--bone);width:38px;height:38px;border-radius:999px;display:grid;place-items:center;cursor:pointer}
+  .iconbtn .badge{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:var(--blaze);color:#160b04;font-family:'Barlow Condensed';font-weight:700;font-size:12px;display:grid;place-items:center;border:2px solid var(--bg)}
+  .empty{color:var(--khaki);font-size:14.5px;line-height:1.5;margin-top:14px}
+  .reqcard{background:var(--panel-2);border:1px solid var(--line);border-radius:13px;padding:15px;margin-top:13px}
+  .reqtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .reqtop b{font-family:'Barlow Condensed';font-weight:600;font-size:19px;text-transform:uppercase;letter-spacing:.03em}
+  .vbadge{display:inline-block;margin-left:8px;font-family:'Barlow Condensed';font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ok);background:#16200f;border:1px solid #2f4220;border-radius:6px;padding:2px 7px;vertical-align:middle}
+  .vbadge.pend{color:var(--khaki);background:#1a1f14;border-color:var(--line)}
+  .statuspill{flex:none;font-family:'Barlow Condensed';font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-radius:7px;padding:5px 10px}
+  .statuspill.requested{color:var(--blaze);background:#23140f;border:1px solid #4a2415}
+  .statuspill.accepted{color:var(--ok);background:#16200f;border:1px solid #2f4220}
+  .statuspill.declined,.statuspill.cancelled{color:var(--khaki);background:#1a1f14;border:1px solid var(--line)}
+  .reqmeta{display:grid;grid-template-columns:1fr 1fr;gap:11px 16px;margin-top:13px}
+  .reqmeta div small{display:block;color:var(--khaki);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+  .reqmeta div span{font-family:'Barlow Condensed';font-size:16px;letter-spacing:.02em}
+  .reqactions{display:flex;gap:10px;margin-top:15px}
+  .reqactions button{flex:1;border:none;border-radius:9px;padding:12px;font-family:'Barlow Condensed';font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
+  .btn-accept{background:var(--ok);color:#0f1505}
+  .btn-decline{background:#23140f;color:var(--blaze);border:1px solid #4a2415 !important}
 </style>
 </head>
 <body>
@@ -162,7 +183,13 @@
   <div id="map"></div>
   <div class="topbar">
     <div class="lock"><div class="glyph"><i></i></div><div class="wordmark">Permission</div></div>
-    <div class="me"><span id="meLabel">—</span><button onclick="doSignOut()" title="Log out">⏻</button></div>
+    <div style="display:flex;align-items:center;gap:8px;pointer-events:auto">
+      <button class="iconbtn hide" id="reqBtn" onclick="openRequests()" title="Requests">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+        <span class="badge hide" id="reqBadge">0</span>
+      </button>
+      <div class="me"><span id="meLabel">—</span><button onclick="doSignOut()" title="Log out">⏻</button></div>
+    </div>
   </div>
   <div class="banner" id="banner"></div>
 
@@ -178,7 +205,7 @@
    CONFIG — paste your two values from Supabase → Project Settings → API
    =================================================================== */
 const SUPABASE_URL      = 'https://cufypxwykxtddgkiggml.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_MJ4OYsGWFmFnsnCOLXp7Gw_iZkFbXZV';
+const SUPABASE_ANON_KEY = 'sb_publishable_MJ4OYsGWFmFnsnCOLXp7Gw_iZkFbXZV';  // sb_publishable_...
 /* =================================================================== */
 
 const configured = SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY.length > 20;
@@ -223,6 +250,24 @@ async function createProperty(fields){
 async function requestBooking(propertyId,date){
   const {data:{user}}=await sb.auth.getUser();
   const {data,error}=await sb.from('bookings').insert({property_id:propertyId,shooter_id:user.id,booking_date:date}).select().single();
+  if(error) throw error; return data;
+}
+// Requests coming IN to an owner, with the shooter's vetting info joined in.
+async function incomingRequests(){
+  const {data,error}=await sb.from('bookings')
+    .select('id,booking_date,status,note,created_at, properties!inner(name,locality), shooter:profiles!bookings_shooter_id_fkey(full_name,firearms_licence_no,ssaa_no,verified)')
+    .order('created_at',{ascending:false});
+  if(error) throw error; return data;
+}
+// A shooter's own requests with current status.
+async function myBookings(){
+  const {data,error}=await sb.from('bookings')
+    .select('id,booking_date,status,created_at, properties(name,locality)')
+    .order('created_at',{ascending:false});
+  if(error) throw error; return data;
+}
+async function setBookingStatus(id,status){
+  const {data,error}=await sb.from('bookings').update({status}).eq('id',id).select().single();
   if(error) throw error; return data;
 }
 
@@ -296,6 +341,75 @@ async function route(session){
   show('app');
   if(!map) initMap();
   await refreshPins();
+  updateRequestsBadge();
+}
+
+/* ---------------- REQUESTS (inbox) ---------------- */
+async function updateRequestsBadge(){
+  const btn=document.getElementById('reqBtn'), badge=document.getElementById('reqBadge');
+  btn.classList.remove('hide');
+  try{
+    if(profile?.role==='owner'){
+      const rows=await incomingRequests();
+      const pending=rows.filter(r=>r.status==='requested').length;
+      badge.textContent=pending; badge.classList.toggle('hide', pending===0);
+    } else { badge.classList.add('hide'); }
+  }catch(e){ badge.classList.add('hide'); }
+}
+async function openRequests(){
+  const body=document.getElementById('sheetBody');
+  body.innerHTML=`<div class="formhead">${profile?.role==='owner'?'Incoming requests':'My requests'}</div><p class="empty">Loading…</p>`;
+  openSheet();
+  try{
+    if(profile?.role==='owner') renderOwnerRequests(await incomingRequests());
+    else renderShooterBookings(await myBookings());
+  }catch(e){ body.innerHTML=`<div class="formhead">Requests</div><p class="empty" style="color:var(--err)">${esc(e.message||'Could not load')}</p>`; }
+}
+function renderOwnerRequests(rows){
+  const body=document.getElementById('sheetBody');
+  let html=`<div class="formhead">Incoming requests</div>`;
+  if(!rows.length){ body.innerHTML=html+`<p class="empty">No requests yet. When a shooter requests one of your properties, it shows up here with their licence details to vet.</p>`; return; }
+  html+=rows.map(r=>{
+    const s=r.shooter||{}, pending=r.status==='requested';
+    return `<div class="reqcard">
+      <div class="reqtop">
+        <div><b>${esc(s.full_name||'Shooter')}</b>${s.verified?'<span class="vbadge">ID verified</span>':'<span class="vbadge pend">unverified</span>'}</div>
+        <span class="statuspill ${r.status}">${r.status}</span>
+      </div>
+      <div class="reqmeta">
+        <div><small>Property</small><span>${esc(r.properties?.name||'')}</span></div>
+        <div><small>Date</small><span>${esc(r.booking_date)}</span></div>
+        <div><small>Firearms licence</small><span>${esc(s.firearms_licence_no||'—')}</span></div>
+        <div><small>SSAA</small><span>${esc(s.ssaa_no||'—')}</span></div>
+      </div>
+      ${pending?`<div class="reqactions">
+        <button class="btn-accept" onclick="decide('${r.id}','accepted')">Accept</button>
+        <button class="btn-decline" onclick="decide('${r.id}','declined')">Decline</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+  body.innerHTML=html;
+}
+function renderShooterBookings(rows){
+  const body=document.getElementById('sheetBody');
+  let html=`<div class="formhead">My requests</div>`;
+  if(!rows.length){ body.innerHTML=html+`<p class="empty">You haven't requested any properties yet. Tap a pin on the map to request a day.</p>`; return; }
+  html+=rows.map(r=>`<div class="reqcard">
+    <div class="reqtop">
+      <div><b>${esc(r.properties?.name||'Property')}</b><div style="color:var(--khaki);font-size:13px;margin-top:2px">${esc(r.properties?.locality||'')}</div></div>
+      <span class="statuspill ${r.status}">${r.status}</span>
+    </div>
+    <div class="reqmeta"><div><small>Date requested</small><span>${esc(r.booking_date)}</span></div></div>
+  </div>`).join('');
+  body.innerHTML=html;
+}
+async function decide(id,status){
+  try{
+    await setBookingStatus(id,status);
+    renderOwnerRequests(await incomingRequests());
+    updateRequestsBadge();
+    banner(status==='accepted'?'Request accepted':'Request declined');
+  }catch(e){ banner(e.message||'Could not update'); }
 }
 
 /* ---------------- MAP ---------------- */
