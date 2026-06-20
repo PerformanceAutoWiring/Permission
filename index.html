@@ -205,7 +205,7 @@
    CONFIG — paste your two values from Supabase → Project Settings → API
    =================================================================== */
 const SUPABASE_URL      = 'https://cufypxwykxtddgkiggml.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_MJ4OYsGWFmFnsnCOLXp7Gw_iZkFbXZV';  // sb_publishable_...
+const SUPABASE_ANON_KEY = 'sb_publishable_MJ4OYsGWFmFnsnCOLXp7Gw_iZkFbXZV';
 /* =================================================================== */
 
 const configured = SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY.length > 20;
@@ -334,7 +334,11 @@ function show(screen){
 }
 
 async function route(session){
-  if(!session){ show('auth'); profile=null; return; }
+  if(!session){
+    show('auth'); profile=null;
+    const b=document.getElementById('authbtn'); if(b) b.disabled=false;  // re-enable after sign-out
+    return;
+  }
   profile = await getMyProfile();
   document.getElementById('meLabel').textContent = profile?.role==='owner'?'Owner':'Shooter';
   document.getElementById('fab').classList.toggle('hide', profile?.role!=='owner');
@@ -541,7 +545,7 @@ function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 (async function(){
   if(!configured){ show('setup'); return; }
   setMode('login');
-  sb.auth.onAuthStateChange((_e,session)=>route(session));
+  sb.auth.onAuthStateChange((_e,session)=>{ setTimeout(()=>route(session),0); }); // defer: avoids auth-lock hang
   const { data:{ session } } = await sb.auth.getSession();
   route(session);
 })();
