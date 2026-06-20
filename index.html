@@ -134,6 +134,19 @@
   .reqactions button{flex:1;border:none;border-radius:9px;padding:12px;font-family:'Barlow Condensed';font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
   .btn-accept{background:var(--ok);color:#0f1505}
   .btn-decline{background:#23140f;color:var(--blaze);border:1px solid #4a2415 !important}
+
+  /* photo gallery + lightbox */
+  .gallery{display:flex;gap:8px;overflow-x:auto;margin:14px -20px 2px;padding:0 20px 4px;-webkit-overflow-scrolling:touch}
+  .gallery img{height:138px;min-width:190px;width:auto;object-fit:cover;border-radius:11px;border:1px solid var(--line);cursor:pointer;flex:none;background:var(--panel-2)}
+  .filein{padding:11px;color:var(--khaki);font-size:14px}
+  .filein::file-selector-button{font-family:'Barlow Condensed';font-weight:600;text-transform:uppercase;letter-spacing:.06em;background:var(--blaze);color:#160b04;border:none;border-radius:7px;padding:8px 13px;margin-right:12px;cursor:pointer}
+  #lightbox{position:fixed;inset:0;z-index:2000;background:rgba(8,10,6,.96);display:flex;align-items:center;justify-content:center}
+  #lightbox.hide{display:none}
+  #lbImg{max-width:92%;max-height:82%;border-radius:8px;object-fit:contain}
+  .lb-close{position:absolute;top:calc(14px + env(safe-area-inset-top));right:16px;background:var(--panel);border:1px solid var(--line);color:var(--bone);width:40px;height:40px;border-radius:999px;font-size:17px;cursor:pointer}
+  .lb-nav{position:absolute;top:50%;transform:translateY(-50%);background:var(--panel);border:1px solid var(--line);color:var(--bone);width:44px;height:44px;border-radius:999px;font-size:26px;line-height:1;cursor:pointer;font-family:'Barlow Condensed'}
+  .lb-nav.prev{left:14px}
+  .lb-nav.next{right:14px}
 </style>
 </head>
 <body>
@@ -196,6 +209,13 @@
   <div class="fab hide" id="fab"><button onclick="startPlacing()">+ List a property</button></div>
 
   <div class="sheet" id="sheet"><div class="grab"></div><div class="scroll" id="sheetBody"></div></div>
+
+  <div id="lightbox" class="hide" onclick="closeLightbox(event)">
+    <button class="lb-close" onclick="closeLightbox(event)">✕</button>
+    <button class="lb-nav prev" onclick="lbStep(-1,event)">‹</button>
+    <img id="lbImg" src="" alt="" />
+    <button class="lb-nav next" onclick="lbStep(1,event)">›</button>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -269,6 +289,21 @@ async function myBookings(){
 async function setBookingStatus(id,status){
   const {data,error}=await sb.from('bookings').update({status}).eq('id',id).select().single();
   if(error) throw error; return data;
+}
+// Upload property photos to the public bucket under the owner's own folder,
+// return their public URLs (first becomes the cover).
+async function uploadPropertyPhotos(files){
+  const {data:{user}}=await sb.auth.getUser();
+  const urls=[];
+  for(let i=0;i<files.length;i++){
+    const file=files[i];
+    const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+    const path=`${user.id}/${Date.now()}_${i}.${ext}`;
+    const {error}=await sb.storage.from('property-photos').upload(path,file,{contentType:file.type||'image/jpeg'});
+    if(error) throw error;
+    urls.push(sb.storage.from('property-photos').getPublicUrl(path).data.publicUrl);
+  }
+  return urls;
 }
 
 /* ---------------- AUTH UI ---------------- */
@@ -440,11 +475,16 @@ function openProp(p){
   if(placing) return;
   const isShooter = profile?.role==='shooter';
   const game=(p.game||[]).map(g=>`<span>${esc(g)}</span>`).join('') || '<span style="color:var(--khaki)">Not specified</span>';
+  galleryPhotos = p.photos||[];
+  const gallery = galleryPhotos.length
+    ? `<div class="gallery">${galleryPhotos.map((u,i)=>`<img src="${esc(u)}" alt="" loading="lazy" onclick="openLightbox(${i})" />`).join('')}</div>`
+    : '';
   document.getElementById('sheetBody').innerHTML=`
     <div class="ptitle">
       <div><h2>${esc(p.name)}</h2><div class="loc">${esc(p.locality||'')}${p.terrain?' · '+esc(p.terrain):''}</div></div>
       <div class="price"><b>${p.price_per_day!=null?'$'+p.price_per_day:'—'}</b><small>per day</small></div>
     </div>
+    ${gallery}
     <div class="meta">
       ${p.area_ha?`<div><small>Area</small><b>${p.area_ha} ha</b></div>`:''}
     </div>
@@ -504,6 +544,8 @@ function openPropertyForm(){
       <span class="chip" data-k="bow_only" onclick="this.classList.toggle('on')">Bow only</span>
     </div>
     <label class="fld"><span>About the property</span><input class="inp" id="p-desc" placeholder="Access notes, what to expect..." /></label>
+    <label class="fld"><span>Photos</span><input class="inp filein" id="p-photos" type="file" accept="image/*" multiple /></label>
+    <p style="color:var(--khaki-dim);font-size:12.5px;margin-top:5px">The land, terrain, previous hunts — first photo becomes the cover.</p>
     <div class="msg" id="pmsg"></div>
     <button class="cta" id="savebtn" onclick="saveProperty()">Publish listing</button>
     <button class="ghost" style="width:100%;margin-top:12px" onclick="cancelPlacing()">Cancel</button>
@@ -525,15 +567,27 @@ async function saveProperty(){
   };
   if(!fields.name){ pm('Give it a name','err'); btn.disabled=false; return; }
   try{
+    const files=document.getElementById('p-photos').files;
+    if(files && files.length){ btn.textContent='Uploading photos…'; fields.photos=await uploadPropertyPhotos(files); }
+    btn.textContent='Publishing…';
     await createProperty(fields);
     if(tempMarker){map.removeLayer(tempMarker);tempMarker=null;}
     closeSheet(); banner('Property published'); await refreshPins();
-  }catch(e){ pm(e.message||'Could not save','err'); btn.disabled=false; }
+  }catch(e){ pm(e.message||'Could not save','err'); btn.textContent='Publish listing'; btn.disabled=false; }
 }
 function pm(t,k){ const m=document.getElementById('pmsg'); m.textContent=t; m.className='msg show '+k; }
 function num(id){ const v=val(id); return v===''?null:Number(v); }
 
 /* ---------------- helpers ---------------- */
+let galleryPhotos=[], lbIndex=0;
+function openLightbox(i){
+  lbIndex=i;
+  document.getElementById('lbImg').src=galleryPhotos[i];
+  document.querySelectorAll('.lb-nav').forEach(b=>b.classList.toggle('hide', galleryPhotos.length<=1));
+  document.getElementById('lightbox').classList.remove('hide');
+}
+function lbStep(d,e){ if(e) e.stopPropagation(); lbIndex=(lbIndex+d+galleryPhotos.length)%galleryPhotos.length; document.getElementById('lbImg').src=galleryPhotos[lbIndex]; }
+function closeLightbox(e){ if(e && e.target && e.target.id==='lbImg') return; document.getElementById('lightbox').classList.add('hide'); }
 function openSheet(){ document.getElementById('sheet').classList.add('up'); }
 function closeSheet(){ document.getElementById('sheet').classList.remove('up'); }
 let bannerTimer=null;
