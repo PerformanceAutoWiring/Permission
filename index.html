@@ -280,8 +280,9 @@ function setMode(m){
   document.getElementById('rolewrap').classList.toggle('hide',m==='login');
   document.getElementById('f-name').classList.toggle('hide',m==='login');
   document.getElementById('authbtn').textContent = m==='login'?'Log in':'Create account';
-  // wipe password + register-only fields so nothing carries across a tab switch
-  ['i-pass','i-name','i-lic','i-ssaa'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  // wipe ALL auth fields + re-enable the button so nothing carries across a tab switch or sign-out
+  ['i-email','i-pass','i-name','i-lic','i-ssaa'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('authbtn').disabled=false;
   applyRoleFields();
   hideMsg();
 }
@@ -335,8 +336,7 @@ function show(screen){
 
 async function route(session){
   if(!session){
-    show('auth'); profile=null;
-    const b=document.getElementById('authbtn'); if(b) b.disabled=false;  // re-enable after sign-out
+    show('auth'); profile=null; setMode('login');  // reset to a clean, empty login form
     return;
   }
   profile = await getMyProfile();
