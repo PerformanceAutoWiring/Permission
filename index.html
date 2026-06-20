@@ -177,8 +177,8 @@
 /* ===================================================================
    CONFIG — paste your two values from Supabase → Project Settings → API
    =================================================================== */
-const SUPABASE_URL      = 'https://cufypxwykxtddgkiggml.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_MJ4OYsGWFmFnsnCOLXp7Gw_iZkFbXZV';
+const SUPABASE_URL      = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 /* =================================================================== */
 
 const configured = SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY.length > 20;
@@ -235,6 +235,8 @@ function setMode(m){
   document.getElementById('rolewrap').classList.toggle('hide',m==='login');
   document.getElementById('f-name').classList.toggle('hide',m==='login');
   document.getElementById('authbtn').textContent = m==='login'?'Log in':'Create account';
+  // wipe password + register-only fields so nothing carries across a tab switch
+  ['i-pass','i-name','i-lic','i-ssaa'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   applyRoleFields();
   hideMsg();
 }
@@ -261,7 +263,18 @@ async function submitAuth(){
       const f={ name:val('i-name'), email, pass, lic:val('i-lic'), ssaa:val('i-ssaa') };
       if(!f.name){ throw new Error('Add your name'); }
       const res=await signUp(role,f);
-      if(!res.session){ showMsg('Account made. Check your email to confirm, then log in. (Or disable email confirmation in Supabase for instant access.)','ok'); btn.disabled=false; setMode('login'); return; }
+      // Supabase returns a user with an empty identities array when the email
+      // already exists (and sends no email) — surface that instead of going silent.
+      if(res.user && Array.isArray(res.user.identities) && res.user.identities.length===0){
+        setMode('login');
+        showMsg('That email already has an account. Log in instead, or use a different email.','err');
+        btn.disabled=false; return;
+      }
+      if(!res.session){
+        setMode('login');  // setMode clears fields + hides messages, so show AFTER it
+        showMsg('Account created. Check your email to confirm, then log in. (Or turn off email confirmation in Supabase for instant access.)','ok');
+        btn.disabled=false; return;
+      }
     }
     // onAuthStateChange will route us into the app
   }catch(err){ showMsg(err.message||'Something went wrong','err'); btn.disabled=false; }
