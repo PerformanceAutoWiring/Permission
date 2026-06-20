@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>PERMISSION</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#13170F;--panel:#1C2418;--panel-2:#252E1E;--line:#3A4630;
+    --blaze:#FF5A1F;--blaze-dim:#C8461A;--bone:#E9E4D6;--khaki:#9A9276;
+    --khaki-dim:#6E6A54;--ok:#8FB04A;--err:#E8654A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:'Barlow',system-ui,sans-serif;background:var(--bg);color:var(--bone);overflow:hidden;position:fixed;width:100%}
+  .cond{font-family:'Barlow Condensed',sans-serif}
+  .stencil{font-family:'Barlow Condensed';text-transform:uppercase;letter-spacing:.14em}
+  .hide{display:none !important}
+
+  /* shared bits */
+  .glyph{width:30px;height:30px;flex:none;position:relative}
+  .glyph::before,.glyph::after{content:"";position:absolute;background:var(--blaze)}
+  .glyph::before{left:13px;top:0;width:4px;height:30px}
+  .glyph::after{top:13px;left:0;height:4px;width:30px}
+  .glyph i{position:absolute;inset:6px;border:3px solid var(--bone);border-radius:50%;opacity:.85}
+  .wordmark{font-family:'Barlow Condensed';font-weight:700;letter-spacing:.18em;text-transform:uppercase;line-height:1}
+  .inp{width:100%;background:#0f1209;border:1px solid var(--line);border-radius:10px;color:var(--bone);padding:13px;font-size:16px;font-family:'Barlow'}
+  .inp:focus{outline:none;border-color:var(--blaze)}
+  label.fld{display:block;margin-top:13px}
+  label.fld span{display:block;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--khaki);margin-bottom:6px}
+  .cta{width:100%;margin-top:20px;cursor:pointer;background:var(--blaze);color:#160b04;border:none;border-radius:11px;padding:16px;font-family:'Barlow Condensed';font-weight:700;font-size:19px;text-transform:uppercase;letter-spacing:.08em}
+  .cta:active{background:var(--blaze-dim)}
+  .cta:disabled{opacity:.5}
+  .ghost{background:none;border:none;color:var(--khaki);font-size:14px;cursor:pointer;font-family:'Barlow'}
+  .chip{border:1px solid var(--line);background:#0f1209;color:var(--khaki);border-radius:999px;padding:8px 14px;font-size:13.5px;cursor:pointer;user-select:none;font-family:'Barlow Condensed';letter-spacing:.04em;text-transform:uppercase}
+  .chip.on{background:var(--blaze);border-color:var(--blaze);color:#160b04;font-weight:600}
+  .msg{margin-top:14px;font-size:14px;padding:11px 13px;border-radius:9px;display:none}
+  .msg.show{display:block}
+  .msg.err{background:#2a140f;border:1px solid #5a2718;color:var(--err)}
+  .msg.ok{background:#16200f;border:1px solid #2f4220;color:var(--ok)}
+
+  /* ---------- SETUP / AUTH ---------- */
+  .screen{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;padding:30px 24px calc(28px + env(safe-area-inset-bottom));overflow-y:auto;background:radial-gradient(120% 80% at 50% -10%,#232c1c 0%,var(--bg) 60%)}
+  .brandlock{display:flex;align-items:center;gap:11px}
+  .brandlock .wordmark{font-size:28px}
+  .tag{color:var(--khaki);font-size:13px;margin-top:3px}
+  .panelbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:24px}
+  .panelbox h2{font-family:'Barlow Condensed';font-weight:700;text-transform:uppercase;font-size:22px;letter-spacing:.04em;margin-bottom:6px}
+  .panelbox p{color:var(--khaki);font-size:14px;line-height:1.5}
+  code{background:#0f1209;border:1px solid var(--line);border-radius:5px;padding:2px 6px;font-size:13px;color:var(--blaze)}
+
+  .seg{display:flex;background:#0f1209;border:1px solid var(--line);border-radius:11px;padding:4px;margin-top:20px}
+  .seg button{flex:1;background:none;border:none;color:var(--khaki);font-family:'Barlow Condensed';font-weight:600;font-size:15px;text-transform:uppercase;letter-spacing:.06em;padding:10px;border-radius:8px;cursor:pointer}
+  .seg button.on{background:var(--panel-2);color:var(--bone)}
+
+  .rolepick{display:flex;gap:10px;margin-top:14px}
+  .roleb{flex:1;cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .roleb.sel{border-color:var(--blaze);background:var(--panel-2)}
+  .roleb .ic{font-family:'Barlow Condensed';font-weight:700;font-size:24px;color:var(--blaze)}
+  .roleb.sel .ic{}
+  .roleb h3{font-family:'Barlow Condensed';font-weight:600;font-size:16px;text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+
+  /* ---------- MAP APP ---------- */
+  #app{position:fixed;inset:0}
+  #map{position:absolute;inset:0;background:#1a1f14}
+  .leaflet-container{background:#1a1f14}
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:600;padding:calc(10px + env(safe-area-inset-top)) 14px 14px;background:linear-gradient(to bottom,rgba(15,18,9,.94),rgba(15,18,9,0));display:flex;align-items:center;justify-content:space-between;pointer-events:none}
+  .topbar .lock{display:flex;align-items:center;gap:8px;pointer-events:auto}
+  .topbar .glyph{width:22px;height:22px}
+  .topbar .glyph::before{left:9px;width:3px;height:22px}
+  .topbar .glyph::after{top:9px;height:3px;width:22px}
+  .topbar .glyph i{inset:4px;border-width:2px}
+  .topbar .wordmark{font-size:18px;letter-spacing:.14em}
+  .me{pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 8px 6px 12px;display:flex;align-items:center;gap:9px}
+  .me span{font-size:12px;font-family:'Barlow Condensed';letter-spacing:.08em;text-transform:uppercase;color:var(--khaki)}
+  .me button{background:#0f1209;border:1px solid var(--line);color:var(--khaki);border-radius:999px;width:26px;height:26px;cursor:pointer;font-size:13px}
+
+  .fab{position:absolute;left:14px;right:14px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:600;display:flex;justify-content:center}
+  .fab button{pointer-events:auto;background:var(--blaze);color:#160b04;border:none;border-radius:12px;padding:15px 26px;font-family:'Barlow Condensed';font-weight:700;font-size:18px;text-transform:uppercase;letter-spacing:.07em;box-shadow:0 6px 18px rgba(0,0,0,.45);cursor:pointer}
+
+  .banner{position:absolute;top:calc(64px + env(safe-area-inset-top));left:14px;right:14px;z-index:600;background:var(--blaze);color:#160b04;border-radius:10px;padding:11px 14px;font-family:'Barlow Condensed';font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:14px;text-align:center;display:none}
+  .banner.show{display:block}
+
+  .wp{position:relative;width:34px;height:34px}
+  .wp .pin{position:absolute;left:50%;top:0;transform:translateX(-50%);width:26px;height:26px;background:var(--blaze);border-radius:50% 50% 50% 0;rotate:45deg;border:2px solid #160b04;box-shadow:0 3px 8px rgba(0,0,0,.5)}
+  .wp.mine .pin{background:var(--ok)}
+
+  /* sheet */
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:700;background:var(--panel);border-top:1px solid var(--line);border-radius:20px 20px 0 0;transform:translateY(110%);transition:transform .3s cubic-bezier(.2,.8,.2,1);max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+  .sheet.up{transform:translateY(0)}
+  .grab{width:40px;height:4px;border-radius:2px;background:var(--khaki-dim);margin:10px auto 2px}
+  .sheet .scroll{overflow-y:auto;padding:8px 20px 22px}
+  .ptitle{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-top:6px}
+  .ptitle h2{font-family:'Barlow Condensed';font-weight:700;text-transform:uppercase;font-size:25px;line-height:1}
+  .ptitle .loc{color:var(--khaki);font-size:13.5px;margin-top:4px}
+  .price b{font-family:'Barlow Condensed';font-size:25px;color:var(--blaze)}
+  .price small{display:block;color:var(--khaki);font-size:11px;letter-spacing:.1em;text-transform:uppercase;text-align:right}
+  .meta{display:flex;gap:18px;margin-top:14px;flex-wrap:wrap}
+  .meta div small{display:block;color:var(--khaki);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .meta div b{font-family:'Barlow Condensed';font-size:18px}
+  .sec{margin-top:16px}
+  .sec .h{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--khaki);margin-bottom:8px}
+  .game{display:flex;gap:8px;flex-wrap:wrap}
+  .game span{background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:6px 11px;font-size:13px;font-family:'Barlow Condensed';letter-spacing:.04em;text-transform:uppercase}
+  .rules{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .rule{display:flex;align-items:center;gap:9px;font-size:14px}
+  .rule .mk{width:18px;height:18px;flex:none;border-radius:5px;display:grid;place-items:center;font-size:12px;font-weight:700;font-family:'Barlow Condensed'}
+  .rule.yes .mk{background:#16200f;color:var(--ok);border:1px solid #2f4220}
+  .rule.no .mk{background:#23140f;color:var(--blaze);border:1px solid #4a2415}
+  .rule.no{color:var(--khaki)}
+  .desc{color:#cfcab9;font-size:14.5px;line-height:1.5}
+  .toggles{display:flex;flex-wrap:wrap;gap:8px}
+  .formhead{font-family:'Barlow Condensed';font-weight:700;text-transform:uppercase;font-size:23px;letter-spacing:.04em}
+</style>
+</head>
+<body>
+
+<!-- ============ SETUP SCREEN (shown until keys are added) ============ -->
+<div class="screen" id="setup">
+  <div class="brandlock"><div class="glyph"><i></i></div><div><div class="wordmark">Permission</div><div class="tag">one-time setup</div></div></div>
+  <div class="panelbox">
+    <h2>Connect your backend</h2>
+    <p>Open this file and paste your two Supabase keys into the <code>CONFIG</code> block near the top of the script, then re-deploy. Find them in Supabase → <b>Project Settings → API</b>.</p>
+    <p style="margin-top:12px">Also make sure you've run <code>schema.sql</code> in the SQL editor, and for easy testing turn <b>off</b> "Confirm email" under Authentication → Sign In / Providers → Email.</p>
+  </div>
+</div>
+
+<!-- ============ AUTH SCREEN ============ -->
+<div class="screen hide" id="auth">
+  <div class="brandlock"><div class="glyph"><i></i></div><div><div class="wordmark">Permission</div><div class="tag">private land, made findable</div></div></div>
+
+  <div class="seg" id="seg">
+    <button class="on" id="seg-login" onclick="setMode('login')">Log in</button>
+    <button id="seg-register" onclick="setMode('register')">Register</button>
+  </div>
+
+  <!-- register-only role picker -->
+  <div id="rolewrap" class="hide">
+    <p class="stencil" style="font-size:11px;color:var(--khaki);margin-top:18px">Register as</p>
+    <div class="rolepick">
+      <div class="roleb sel" id="rb-shooter" onclick="setRole('shooter')"><div class="ic">◎</div><h3>Shooter</h3></div>
+      <div class="roleb" id="rb-owner" onclick="setRole('owner')"><div class="ic">▲</div><h3>Owner</h3></div>
+    </div>
+  </div>
+
+  <div style="margin-top:6px">
+    <label class="fld" id="f-name"><span>Full name</span><input class="inp" id="i-name" placeholder="Your name" /></label>
+    <label class="fld"><span>Email</span><input class="inp" id="i-email" type="email" autocomplete="email" placeholder="you@email.com" /></label>
+    <label class="fld"><span>Password</span><input class="inp" id="i-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></label>
+    <label class="fld shooteronly" id="f-lic"><span>Firearms licence no.</span><input class="inp" id="i-lic" placeholder="VIC licence number" /></label>
+    <label class="fld shooteronly" id="f-ssaa"><span>SSAA membership no. (optional)</span><input class="inp" id="i-ssaa" placeholder="if you have one" /></label>
+  </div>
+
+  <div class="msg" id="authmsg"></div>
+  <button class="cta" id="authbtn" onclick="submitAuth()">Log in</button>
+</div>
+
+<!-- ============ MAP APP ============ -->
+<div id="app" class="hide">
+  <div id="map"></div>
+  <div class="topbar">
+    <div class="lock"><div class="glyph"><i></i></div><div class="wordmark">Permission</div></div>
+    <div class="me"><span id="meLabel">—</span><button onclick="doSignOut()" title="Log out">⏻</button></div>
+  </div>
+  <div class="banner" id="banner"></div>
+
+  <div class="fab hide" id="fab"><button onclick="startPlacing()">+ List a property</button></div>
+
+  <div class="sheet" id="sheet"><div class="grab"></div><div class="scroll" id="sheetBody"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===================================================================
+   CONFIG — paste your two values from Supabase → Project Settings → API
+   =================================================================== */
+const SUPABASE_URL      = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+/* =================================================================== */
+
+const configured = SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY.length > 20;
+
+// storage shim: uses localStorage when available (real deploy = stays logged in),
+// falls back to memory in restricted sandboxes so nothing crashes.
+const mem = {};
+const safeStorage = {
+  getItem: k => { try { return localStorage.getItem(k) } catch { return mem[k] ?? null } },
+  setItem: (k,v) => { try { localStorage.setItem(k,v) } catch { mem[k]=v } },
+  removeItem: k => { try { localStorage.removeItem(k) } catch { delete mem[k] } },
+};
+
+let sb = null;
+if (configured) {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { storage: safeStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+  });
+}
+
+/* ---------------- DATA LAYER (same shape as api.js) ---------------- */
+async function signUp(role, f){
+  const meta = role==='shooter'
+    ? { role, full_name:f.name, firearms_licence_no:f.lic, ssaa_no:f.ssaa||null }
+    : { role, full_name:f.name };
+  const { data, error } = await sb.auth.signUp({ email:f.email, password:f.pass, options:{ data:meta }});
+  if (error) throw error; return data;
+}
+async function signIn(email,pass){ const {data,error}=await sb.auth.signInWithPassword({email,password:pass}); if(error)throw error; return data; }
+async function doSignOut(){ await sb.auth.signOut(); }
+async function getMyProfile(){
+  const {data:{user}}=await sb.auth.getUser(); if(!user) return null;
+  const {data,error}=await sb.from('profiles').select('*').eq('id',user.id).single();
+  if(error) throw error; return data;
+}
+async function listProperties(){ const {data,error}=await sb.from('properties').select('*').eq('active',true); if(error)throw error; return data; }
+async function createProperty(fields){
+  const {data:{user}}=await sb.auth.getUser();
+  const {data,error}=await sb.from('properties').insert({...fields, owner_id:user.id}).select().single();
+  if(error) throw error; return data;
+}
+async function requestBooking(propertyId,date){
+  const {data:{user}}=await sb.auth.getUser();
+  const {data,error}=await sb.from('bookings').insert({property_id:propertyId,shooter_id:user.id,booking_date:date}).select().single();
+  if(error) throw error; return data;
+}
+
+/* ---------------- AUTH UI ---------------- */
+let mode='login', role='shooter';
+function setMode(m){
+  mode=m;
+  document.getElementById('seg-login').classList.toggle('on',m==='login');
+  document.getElementById('seg-register').classList.toggle('on',m==='register');
+  document.getElementById('rolewrap').classList.toggle('hide',m==='login');
+  document.getElementById('f-name').classList.toggle('hide',m==='login');
+  document.getElementById('authbtn').textContent = m==='login'?'Log in':'Create account';
+  applyRoleFields();
+  hideMsg();
+}
+function setRole(r){
+  role=r;
+  document.getElementById('rb-shooter').classList.toggle('sel',r==='shooter');
+  document.getElementById('rb-owner').classList.toggle('sel',r==='owner');
+  applyRoleFields();
+}
+function applyRoleFields(){
+  const showLic = (mode==='register' && role==='shooter');
+  document.querySelectorAll('.shooteronly').forEach(e=>e.classList.toggle('hide',!showLic));
+}
+function showMsg(text,kind){ const m=document.getElementById('authmsg'); m.textContent=text; m.className='msg show '+kind; }
+function hideMsg(){ document.getElementById('authmsg').className='msg'; }
+
+async function submitAuth(){
+  const btn=document.getElementById('authbtn'); btn.disabled=true; hideMsg();
+  const email=val('i-email'), pass=val('i-pass');
+  try{
+    if(mode==='login'){
+      await signIn(email,pass);
+    }else{
+      const f={ name:val('i-name'), email, pass, lic:val('i-lic'), ssaa:val('i-ssaa') };
+      if(!f.name){ throw new Error('Add your name'); }
+      const res=await signUp(role,f);
+      if(!res.session){ showMsg('Account made. Check your email to confirm, then log in. (Or disable email confirmation in Supabase for instant access.)','ok'); btn.disabled=false; setMode('login'); return; }
+    }
+    // onAuthStateChange will route us into the app
+  }catch(err){ showMsg(err.message||'Something went wrong','err'); btn.disabled=false; }
+}
+function val(id){ return document.getElementById(id).value.trim(); }
+
+/* ---------------- ROUTING ---------------- */
+let profile=null, map=null, markers=[], placing=false;
+
+function show(screen){
+  ['setup','auth','app'].forEach(s=>document.getElementById(s).classList.toggle('hide',s!==screen));
+}
+
+async function route(session){
+  if(!session){ show('auth'); profile=null; return; }
+  profile = await getMyProfile();
+  document.getElementById('meLabel').textContent = profile?.role==='owner'?'Owner':'Shooter';
+  document.getElementById('fab').classList.toggle('hide', profile?.role!=='owner');
+  show('app');
+  if(!map) initMap();
+  await refreshPins();
+}
+
+/* ---------------- MAP ---------------- */
+function initMap(){
+  map=L.map('map',{zoomControl:false,attributionControl:false}).setView([-37.62,147.75],9);
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:18}).addTo(map);
+  map.on('click',e=>{ if(placing) placeAt(e.latlng); });
+}
+async function refreshPins(){
+  markers.forEach(m=>map.removeLayer(m)); markers=[];
+  let props=[]; try{ props=await listProperties(); }catch(e){ banner('Could not load properties'); return; }
+  props.forEach(p=>{
+    const mine = profile && p.owner_id===profile.id;
+    const icon=L.divIcon({className:'',html:`<div class="wp ${mine?'mine':''}"><div class="pin"></div></div>`,iconSize:[34,34],iconAnchor:[17,30]});
+    const mk=L.marker([p.lat,p.lng],{icon}).addTo(map).on('click',()=>openProp(p));
+    markers.push(mk);
+  });
+}
+
+/* ---------------- LISTING DETAIL ---------------- */
+function ruleRow(label,on){ return `<div class="rule ${on?'yes':'no'}"><span class="mk">${on?'✓':'✕'}</span>${label}</div>`; }
+function openProp(p){
+  if(placing) return;
+  const isShooter = profile?.role==='shooter';
+  const game=(p.game||[]).map(g=>`<span>${esc(g)}</span>`).join('') || '<span style="color:var(--khaki)">Not specified</span>';
+  document.getElementById('sheetBody').innerHTML=`
+    <div class="ptitle">
+      <div><h2>${esc(p.name)}</h2><div class="loc">${esc(p.locality||'')}${p.terrain?' · '+esc(p.terrain):''}</div></div>
+      <div class="price"><b>${p.price_per_day!=null?'$'+p.price_per_day:'—'}</b><small>per day</small></div>
+    </div>
+    <div class="meta">
+      ${p.area_ha?`<div><small>Area</small><b>${p.area_ha} ha</b></div>`:''}
+    </div>
+    <div class="sec"><div class="h">Game</div><div class="game">${game}</div></div>
+    <div class="sec"><div class="h">Property rules</div><div class="rules">
+      ${ruleRow('Quad bikes',p.allow_quads)}${ruleRow('Dogs',p.allow_dogs)}
+      ${ruleRow('Overnight camp',p.allow_camping)}${ruleRow('Centrefire',p.allow_centrefire)}
+      ${ruleRow('Spotlighting',p.allow_spotlight)}${ruleRow('Bow only',p.bow_only)}
+    </div></div>
+    ${p.description?`<div class="sec"><div class="h">About</div><p class="desc">${esc(p.description)}</p></div>`:''}
+    ${isShooter?`
+      <div class="sec"><div class="h">Request a day</div>
+        <input class="inp" type="date" id="bdate" />
+      </div>
+      <button class="cta" id="reqbtn" onclick="doRequest('${p.id}')">Request permission</button>`:''}
+  `;
+  openSheet();
+}
+async function doRequest(pid){
+  const d=document.getElementById('bdate').value;
+  const btn=document.getElementById('reqbtn');
+  if(!d){ btn.textContent='Pick a day first'; setTimeout(()=>btn.textContent='Request permission',1400); return; }
+  btn.disabled=true;
+  try{ await requestBooking(pid,d); closeSheet(); banner('Request sent to the owner'); }
+  catch(e){ btn.disabled=false; btn.textContent=e.message||'Failed'; }
+}
+
+/* ---------------- LIST A PROPERTY (owner) ---------------- */
+function startPlacing(){ placing=true; banner('Tap the map where your property is'); }
+let pending=null, tempMarker=null;
+function placeAt(latlng){
+  pending=latlng; placing=false; clearBanner();
+  if(tempMarker) map.removeLayer(tempMarker);
+  const icon=L.divIcon({className:'',html:`<div class="wp mine"><div class="pin"></div></div>`,iconSize:[34,34],iconAnchor:[17,30]});
+  tempMarker=L.marker(latlng,{icon}).addTo(map);
+  openPropertyForm();
+}
+function openPropertyForm(){
+  document.getElementById('sheetBody').innerHTML=`
+    <div class="formhead">List a property</div>
+    <p style="color:var(--khaki);font-size:13px;margin-top:4px">Pin set at ${pending.lat.toFixed(4)}, ${pending.lng.toFixed(4)}</p>
+    <label class="fld"><span>Property name</span><input class="inp" id="p-name" placeholder="e.g. Tambo River Block" /></label>
+    <label class="fld"><span>Locality</span><input class="inp" id="p-loc" placeholder="e.g. Bruthen, VIC" /></label>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Area (ha)</span><input class="inp" id="p-ha" type="number" inputmode="decimal" placeholder="340" /></label>
+      <label class="fld" style="flex:1"><span>Price/day ($)</span><input class="inp" id="p-price" type="number" inputmode="decimal" placeholder="45" /></label>
+    </div>
+    <label class="fld"><span>Terrain</span><input class="inp" id="p-terrain" placeholder="River flats + timbered ridge" /></label>
+    <label class="fld"><span>Game (comma separated)</span><input class="inp" id="p-game" placeholder="Sambar deer, Fox, Rabbit" /></label>
+    <label class="fld"><span>What's allowed?</span></label>
+    <div class="toggles" id="p-rules">
+      <span class="chip" data-k="allow_quads" onclick="this.classList.toggle('on')">Quad bikes</span>
+      <span class="chip" data-k="allow_dogs" onclick="this.classList.toggle('on')">Dogs</span>
+      <span class="chip" data-k="allow_camping" onclick="this.classList.toggle('on')">Overnight camp</span>
+      <span class="chip" data-k="allow_centrefire" onclick="this.classList.toggle('on')">Centrefire</span>
+      <span class="chip" data-k="allow_spotlight" onclick="this.classList.toggle('on')">Spotlighting</span>
+      <span class="chip" data-k="bow_only" onclick="this.classList.toggle('on')">Bow only</span>
+    </div>
+    <label class="fld"><span>About the property</span><input class="inp" id="p-desc" placeholder="Access notes, what to expect..." /></label>
+    <div class="msg" id="pmsg"></div>
+    <button class="cta" id="savebtn" onclick="saveProperty()">Publish listing</button>
+    <button class="ghost" style="width:100%;margin-top:12px" onclick="cancelPlacing()">Cancel</button>
+  `;
+  openSheet();
+}
+function cancelPlacing(){ if(tempMarker){map.removeLayer(tempMarker);tempMarker=null;} closeSheet(); }
+async function saveProperty(){
+  const btn=document.getElementById('savebtn'); btn.disabled=true;
+  const rules={};
+  document.querySelectorAll('#p-rules .chip').forEach(c=>rules[c.dataset.k]=c.classList.contains('on'));
+  const game=val('p-game').split(',').map(s=>s.trim()).filter(Boolean);
+  const fields={
+    name:val('p-name'), locality:val('p-loc'),
+    lat:pending.lat, lng:pending.lng,
+    area_ha:num('p-ha'), price_per_day:num('p-price'),
+    terrain:val('p-terrain'), description:val('p-desc'),
+    game, ...rules
+  };
+  if(!fields.name){ pm('Give it a name','err'); btn.disabled=false; return; }
+  try{
+    await createProperty(fields);
+    if(tempMarker){map.removeLayer(tempMarker);tempMarker=null;}
+    closeSheet(); banner('Property published'); await refreshPins();
+  }catch(e){ pm(e.message||'Could not save','err'); btn.disabled=false; }
+}
+function pm(t,k){ const m=document.getElementById('pmsg'); m.textContent=t; m.className='msg show '+k; }
+function num(id){ const v=val(id); return v===''?null:Number(v); }
+
+/* ---------------- helpers ---------------- */
+function openSheet(){ document.getElementById('sheet').classList.add('up'); }
+function closeSheet(){ document.getElementById('sheet').classList.remove('up'); }
+let bannerTimer=null;
+function banner(t){ const b=document.getElementById('banner'); b.textContent=t; b.classList.add('show'); clearTimeout(bannerTimer); bannerTimer=setTimeout(()=>b.classList.remove('show'),3000); }
+function clearBanner(){ document.getElementById('banner').classList.remove('show'); }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------------- boot ---------------- */
+(async function(){
+  if(!configured){ show('setup'); return; }
+  setMode('login');
+  sb.auth.onAuthStateChange((_e,session)=>route(session));
+  const { data:{ session } } = await sb.auth.getSession();
+  route(session);
+})();
+</script>
+</body>
+</html>
